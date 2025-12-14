@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ReadingResult as ReadingResultType, UserInput, ChatExchange } from '../types';
 import HexagramVisual from './HexagramVisual';
-import { Briefcase, Heart, Activity, RefreshCcw, Send, Sparkles, MessageCircleQuestion, TrendingUp, ArrowUpCircle, AlertOctagon, ArrowRight, Star, Calendar, Moon } from 'lucide-react';
+import { Briefcase, Heart, Activity, RefreshCcw, Send, Sparkles, MessageCircleQuestion, TrendingUp, ArrowUpCircle, AlertOctagon, ArrowRight, Star, Calendar, Moon, Volume2, StopCircle } from 'lucide-react';
 import { askFollowUpQuestion } from '../services/geminiService';
 
 interface ReadingResultProps {
@@ -22,7 +22,19 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
   const [chatHistory, setChatHistory] = useState<ChatExchange[]>([]);
   const [question, setQuestion] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
+  
+  // Speech State
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Clean up speech on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const handleAsk = async (q: string) => {
       if (!q.trim() || isChatLoading) return;
@@ -49,6 +61,46 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
       }
   }
 
+  // Handle Text-to-Speech
+  const toggleSpeech = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    } else {
+      // Construct a natural reading script
+      const textToRead = `
+        Thái Ất Thần Kinh xin luận giải cho tín chủ ${userInfo.fullName}.
+        
+        Quẻ chủ của bạn là ${data.hexagramName}.
+        Biến sang quẻ ${data.transformedHexagram.name}.
+        Ý nghĩa quẻ biến là: ${data.transformedHexagram.meaning}.
+        
+        Thánh nhân có thơ rằng: 
+        ${data.poem}
+        
+        Về tổng quan vận mệnh: ${data.generalAnalysis}
+        
+        Về tương quan Thế và Ứng: ${data.theUngAnalysis}
+        
+        Lời khuyên sự nghiệp: ${data.careerAdvice.analysis}
+        
+        Mong tín chủ chân cứng đá mềm, cải vận hanh thông.
+      `;
+
+      const utterance = new SpeechSynthesisUtterance(textToRead);
+      utterance.lang = 'vi-VN'; // Vietnamese
+      utterance.rate = 0.9; // Slightly slower for solemnity
+      utterance.pitch = 1.0;
+      
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+
+      speechRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(true);
+    }
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isChatLoading]);
@@ -66,8 +118,31 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
             onClick={onReset}
             className="absolute left-0 top-8 text-slate-400 hover:text-amber-400 flex items-center gap-2 transition-colors text-sm"
         >
-            <RefreshCcw className="w-4 h-4" /> Luận giải lại
+            <RefreshCcw className="w-4 h-4" /> <span className="hidden md:inline">Luận giải lại</span>
         </button>
+
+        {/* Read Aloud Button */}
+        <button 
+            onClick={toggleSpeech}
+            className={`absolute right-0 top-8 flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-sm ${
+              isSpeaking 
+                ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' 
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-amber-500/50 hover:text-amber-200'
+            }`}
+        >
+            {isSpeaking ? (
+              <>
+                <StopCircle className="w-4 h-4" /> 
+                <span className="hidden md:inline">Dừng đọc</span>
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-4 h-4" /> 
+                <span className="hidden md:inline">Đọc kết quả</span>
+              </>
+            )}
+        </button>
+
         <h2 className="text-4xl md:text-5xl font-bold font-serif gold-text tracking-tight">Thái Ất Thần Kinh</h2>
         <div className="w-24 h-1 bg-amber-500/50 mx-auto rounded-full"></div>
       </div>

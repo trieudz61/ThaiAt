@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { UserInput, ReadingResult } from "../types";
+import { getYearCanChi, getDayCanChi, parseInputDate, getDayCanIndex } from "../utils/dateUtils";
 
 // Define the response schema strictly to ensure UI consistency
 const readingSchema: Schema = {
@@ -27,7 +28,7 @@ const readingSchema: Schema = {
       type: Type.OBJECT,
       description: "Thông tin Thiên Can, Địa Chi, Ngày Âm theo Thái Ất.",
       properties: {
-        lunarDate: { type: Type.STRING, description: "Ngày tháng năm Âm lịch." },
+        lunarDate: { type: Type.STRING, description: "Ngày tháng năm Âm lịch chính xác." },
         canChi: { type: Type.STRING, description: "Bát tự (Giờ/Ngày/Tháng/Năm can chi)." },
         rulingStar: { type: Type.STRING, description: "Sao chủ mệnh chiếu vào giờ sinh." }
       },
@@ -106,7 +107,15 @@ const getAIClient = () => {
 
 export const getGeminiReading = async (input: UserInput): Promise<ReadingResult> => {
   const ai = getAIClient();
-  const currentYear = new Date().getFullYear();
+  
+  // 1. Parse Date Manually to avoid Timezone issues
+  const { day, month, year } = parseInputDate(input.birthDate);
+  
+  // 2. Pre-calculate Can Chi information
+  const yearCanChi = getYearCanChi(year);
+  const dayCanChi = getDayCanChi(day, month, year);
+  const dayCanIndex = getDayCanIndex(day, month, year);
+  const dayCanName = ["Giáp", "Ất", "Bính", "Đinh", "Mậu", "Kỷ", "Canh", "Tân", "Nhâm", "Quý"][dayCanIndex];
 
   // PROMPT ĐƯỢC NÂNG CẤP ĐỂ TRÁNH "BA PHẢI" VÀ ĐẢM BẢO TÍNH CHUYÊN SÂU
   const prompt = `
@@ -114,23 +123,32 @@ export const getGeminiReading = async (input: UserInput): Promise<ReadingResult>
 
     **Thông tin đương số:**
     - Tên: ${input.fullName}
-    - Dương lịch: ${input.birthDate} - Giờ: ${input.birthTime}
+    - Ngày Dương Lịch: Ngày ${day} tháng ${month} năm ${year}.
+    - Giờ sinh: ${input.birthTime}
     - Giới tính: ${input.gender === 'male' ? 'Nam' : input.gender === 'female' ? 'Nữ' : 'Khác'}
 
-    **Quy tắc luận giải (BẮT BUỘC TUÂN THỦ):**
-    1. **Tính Bát Tự & Lập Quẻ:** Chuyển đổi ngày sinh sang Âm Lịch và Can Chi. Tính toán để lập ra **Quẻ Chủ** (đại diện hiện tại/bản chất) và **Quẻ Biến** (đại diện kết quả/tương lai). 
+    **Dữ liệu Thiên Văn đã tính toán (BẮT BUỘC DÙNG):**
+    Để đảm bảo chính xác, ta đã tính toán sẵn các trụ quan trọng:
+    - **Năm sinh (Tuổi):** ${yearCanChi}
+    - **Ngày sinh (Trụ Ngày):** ${dayCanChi} (Đây là Can Chi ngày chính xác theo lịch vạn niên, hãy dùng nó để lập quẻ, không tự suy diễn lại).
+    - **Can Ngày:** ${dayCanName} (Dùng để tính Can Giờ theo quy tắc: Giáp Kỷ khởi Giáp Tý, Ất Canh khởi Bính Tý...).
+
+    **Quy tắc luận giải:**
+    1. **Tính Bát Tự & Lập Quẻ:** 
+       - Dựa vào ngày ${day}/${month}/${year} (Dương lịch) -> Chuyển sang Âm Lịch chính xác.
+       - Kết hợp với Can Chi Ngày (${dayCanChi}) và Giờ sinh để lập **Quẻ Chủ** và **Quẻ Biến**.
     2. **Luận Thế - Ứng (Quan trọng):** Phân tích Hào Thế (Bản thân) và Hào Ứng (Đối phương/Hoàn cảnh). 
        - Thế khắc Ứng hay Ứng khắc Thế? 
        - Thế sinh Ứng hay Ứng sinh Thế?
-       -> Từ đó kết luận dứt khoát: Là Thuận lợi (Cát) hay Khó khăn (Hung). **Tuyệt đối không nói "tuy nhiên có thể...", "nhưng cũng cần lưu ý..." theo kiểu nước đôi.** Nếu xấu nói xấu, tốt nói tốt.
+       -> Từ đó kết luận dứt khoát: Là Thuận lợi (Cát) hay Khó khăn (Hung).
     3. **Thái độ:** Lời văn cổ điển, uy nghiêm, quyết đoán, thấu tận tâm can.
     4. **Nghề nghiệp:** Dựa vào Dụng Thần trong quẻ để chỉ rõ ngành nghề đắc dụng.
 
     **Yêu cầu đầu ra:**
     - Xác định chính xác Quẻ Chủ và Quẻ Biến.
-    - Cung cấp thông tin Can Chi, Sao Chủ Mệnh.
+    - Cung cấp thông tin Can Chi (đầy đủ 4 trụ Năm/Tháng/Ngày/Giờ), Sao Chủ Mệnh.
     - Dự báo 5 năm tới phải chỉ rõ: Năm nào phát, năm nào bại.
-    - Lời khuyên "Tiến - Lùi" phải cụ thể hành động (Ví dụ: "Năm nay tuyệt đối không hùn vốn", thay vì "Cẩn thận tài chính").
+    - Lời khuyên "Tiến - Lùi" phải cụ thể hành động.
   `;
 
   try {
@@ -140,7 +158,7 @@ export const getGeminiReading = async (input: UserInput): Promise<ReadingResult>
       config: {
         responseMimeType: "application/json",
         responseSchema: readingSchema,
-        temperature: 0.6, // Giảm temperature để tăng tính kiên định và logic, giảm sáng tạo bay bổng
+        temperature: 0.5, // Giảm thêm temperature để tăng độ chính xác của logic tính toán
       },
     });
 

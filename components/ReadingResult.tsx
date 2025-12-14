@@ -26,40 +26,50 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
   // Speech State
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [preferredVoice, setPreferredVoice] = useState<SpeechSynthesisVoice | null>(null);
-  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
-
+  
+  // Ref to hold utterances to prevent garbage collection bugs
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Load available voices and pick the best Vietnamese one
+  // Load available voices with aggressive filtering for Vietnamese
   useEffect(() => {
     const loadVoices = () => {
       const voices = window.speechSynthesis.getVoices();
-      // Filter for Vietnamese voices
-      const vnVoices = voices.filter(v => v.lang.includes('vi'));
       
-      // Strategy: Prefer Google -> Microsoft -> Any
-      const googleVoice = vnVoices.find(v => v.name.includes('Google'));
-      const highQuality = vnVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced'));
-      const anyVN = vnVoices[0];
-      
-      const bestVoice = googleVoice || highQuality || anyVN;
-      
+      // 1. Tìm giọng Google Tiếng Việt (Android/Chrome/PC thường có)
+      let bestVoice = voices.find(v => v.name === "Google Tiếng Việt");
+
+      // 2. Nếu không có, tìm giọng có mã vi-VN
+      if (!bestVoice) {
+          bestVoice = voices.find(v => v.lang === "vi-VN");
+      }
+
+      // 3. Nếu vẫn không có, tìm giọng bắt đầu bằng 'vi' (ví dụ vi_VN)
+      if (!bestVoice) {
+          bestVoice = voices.find(v => v.lang.startsWith("vi"));
+      }
+
+      // 4. Tìm theo tên có chữ Viet/Việt (iOS thường tên là Linh, An...)
+      if (!bestVoice) {
+          bestVoice = voices.find(v => v.name.includes("Viet") || v.name.includes("Việt"));
+      }
+
       if (bestVoice) {
         setPreferredVoice(bestVoice);
-        console.log("Selected Voice:", bestVoice.name);
+        console.log("Đã chọn giọng đọc:", bestVoice.name, bestVoice.lang);
+      } else {
+        console.warn("Không tìm thấy giọng tiếng Việt trong hệ thống.");
       }
     };
 
+    // Chrome load voice async
     loadVoices();
-    
-    // Chrome loads voices asynchronously
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
 
     return () => {
       window.speechSynthesis.cancel();
-      window.speechSynthesis.onvoiceschanged = null;
     };
   }, []);
 
@@ -94,47 +104,81 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     } else {
-      // Construct a natural reading script
+      // Cancel previous
+      window.speechSynthesis.cancel();
+      setIsSpeaking(true);
+
       const textToRead = `
         Thái Ất Thần Kinh xin luận giải cho tín chủ ${userInfo.fullName}.
-        
         Quẻ chủ của bạn là ${data.hexagramName}.
         Biến sang quẻ ${data.transformedHexagram.name}.
         Ý nghĩa quẻ biến là: ${data.transformedHexagram.meaning}.
-        
-        Thánh nhân có thơ rằng: 
-        ${data.poem}
-        
-        Về tổng quan vận mệnh: ${data.generalAnalysis}
-        
-        Về tương quan Thế và Ứng: ${data.theUngAnalysis}
-        
-        Lời khuyên sự nghiệp: ${data.careerAdvice.analysis}
-        
+        Thánh nhân có thơ rằng: ${data.poem}.
+        Về tổng quan vận mệnh: ${data.generalAnalysis}.
+        Về tương quan Thế và Ứng: ${data.theUngAnalysis}.
+        Lời khuyên sự nghiệp: ${data.careerAdvice.analysis}.
         Mong tín chủ chân cứng đá mềm, cải vận hanh thông.
       `;
 
-      const utterance = new SpeechSynthesisUtterance(textToRead);
-      
-      // Configure Voice
-      utterance.lang = 'vi-VN'; // Default fallback
-      if (preferredVoice) {
-          utterance.voice = preferredVoice;
-          utterance.lang = preferredVoice.lang;
-      }
+      // Chunking strategy: Split by sentence delimiters (. ? ! or newline)
+      const chunks = textToRead.match(/[^.!?\n]+[.!?\n]+/g) || [textToRead];
 
-      utterance.rate = 0.9; // Slightly slower for solemnity
-      utterance.pitch = 1.0;
-      
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = (e) => {
-          console.error("Speech error", e);
-          setIsSpeaking(false);
+      let currentChunkIndex = 0;
+
+      const speakNextChunk = () => {
+          if (currentChunkIndex >= chunks.length) {
+              setIsSpeaking(false);
+              return;
+          }
+
+          const chunkText = chunks[currentChunkIndex].trim();
+          if (!chunkText) {
+              currentChunkIndex++;
+              speakNextChunk();
+              return;
+          }
+
+          const utterance = new SpeechSynthesisUtterance(chunkText);
+          
+          // CẤU HÌNH NGÔN NGỮ CỰC KỲ QUAN TRỌNG
+          utterance.lang = 'vi-VN'; // Luôn set cứng mã này trước
+          
+          if (preferredVoice) {
+              utterance.voice = preferredVoice;
+              // Update lại lang theo voice tìm được để đảm bảo khớp
+              utterance.lang = preferredVoice.lang; 
+          }
+
+          utterance.rate = 1.0; 
+          utterance.pitch = 1.0;
+          
+          utterance.onend = () => {
+              currentChunkIndex++;
+              speakNextChunk();
+          };
+
+          utterance.onerror = (e) => {
+              // Ignore intentional stops
+              if (e.error !== 'canceled' && e.error !== 'interrupted') {
+                  console.warn("TTS Error:", e);
+              }
+              // If error, try to skip to next chunk or stop if critical
+              if (e.error === 'canceled') {
+                  setIsSpeaking(false);
+              } else {
+                  currentChunkIndex++;
+                  speakNextChunk();
+              }
+          };
+
+          // Keep ref to prevent garbage collection
+          utteranceRef.current = utterance;
+          
+          window.speechSynthesis.speak(utterance);
       };
 
-      speechRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      setIsSpeaking(true);
+      // Start reading
+      speakNextChunk();
     }
   };
 

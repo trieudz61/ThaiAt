@@ -128,6 +128,7 @@ const InputForm: React.FC<InputFormProps> = ({ onSubmit, isLoading }) => {
               <span className="flex items-center justify-center gap-2">
                 <Loader2 className="w-5 h-5 animate-spin" />
                 Đang Luận Giải...
+                (Xin Hãy Đợi 1 Phút!)
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">

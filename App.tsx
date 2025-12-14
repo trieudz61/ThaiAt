@@ -75,9 +75,27 @@ const App: React.FC = () => {
     try {
       const result = await getGeminiReading(data);
       setReading(result);
-    } catch (err) {
-      setError("Có lỗi xảy ra khi kết nối với thiên cơ. Vui lòng thử lại sau giây lát.");
-      console.error(err);
+    } catch (err: any) {
+      console.error("Full Error Details:", err);
+      
+      // Hiển thị lỗi chi tiết để debug
+      let displayMessage = "Có lỗi xảy ra khi kết nối với thiên cơ.";
+      
+      if (err.message) {
+         if (err.message.includes("API KEY") || err.message.includes(".env")) {
+             displayMessage = err.message;
+         } else if (err.message.includes("400")) {
+             displayMessage = "Lỗi Dữ Liệu (400): Yêu cầu không hợp lệ. Vui lòng kiểm tra lại thông tin.";
+         } else if (err.message.includes("403")) {
+             displayMessage = "Lỗi Quyền Truy Cập (403): API Key không hợp lệ hoặc bị từ chối.";
+         } else if (err.message.includes("429")) {
+             displayMessage = "Lỗi Quá Tải (429): Hệ thống đang bận, vui lòng chờ vài giây rồi thử lại.";
+         } else {
+             displayMessage = `Lỗi hệ thống: ${err.message}`;
+         }
+      }
+      
+      setError(displayMessage);
     } finally {
       setLoading(false);
     }
@@ -141,7 +159,8 @@ const App: React.FC = () => {
 
       <main className="relative z-10 container mx-auto px-4 py-8 md:py-12">
         {error && (
-          <div className="max-w-md mx-auto mb-8 bg-red-900/50 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg text-center backdrop-blur-md">
+          <div className="max-w-md mx-auto mb-8 bg-red-900/50 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg text-center backdrop-blur-md shadow-lg animate-pulse">
+            <span className="font-bold block mb-1">⚠️ Lỗi Thiên Cơ:</span>
             {error}
           </div>
         )}

@@ -96,10 +96,12 @@ const readingSchema: Schema = {
 };
 
 const getAIClient = () => {
-    if (!process.env.API_KEY) {
-        throw new Error("API Key is missing.");
+    // Kiểm tra kỹ hơn để báo lỗi rõ ràng cho người dùng
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+        throw new Error("CHƯA CẤU HÌNH API KEY. Hãy tạo file .env ở thư mục gốc và thêm dòng: API_KEY=...");
     }
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return new GoogleGenAI({ apiKey });
 }
 
 export const getGeminiReading = async (input: UserInput): Promise<ReadingResult> => {

@@ -25,14 +25,41 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
   
   // Speech State
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [preferredVoice, setPreferredVoice] = useState<SpeechSynthesisVoice | null>(null);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Clean up speech on unmount
+  // Load available voices and pick the best Vietnamese one
   useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      // Filter for Vietnamese voices
+      const vnVoices = voices.filter(v => v.lang.includes('vi'));
+      
+      // Strategy: Prefer Google -> Microsoft -> Any
+      const googleVoice = vnVoices.find(v => v.name.includes('Google'));
+      const highQuality = vnVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced'));
+      const anyVN = vnVoices[0];
+      
+      const bestVoice = googleVoice || highQuality || anyVN;
+      
+      if (bestVoice) {
+        setPreferredVoice(bestVoice);
+        console.log("Selected Voice:", bestVoice.name);
+      }
+    };
+
+    loadVoices();
+    
+    // Chrome loads voices asynchronously
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
     return () => {
       window.speechSynthesis.cancel();
+      window.speechSynthesis.onvoiceschanged = null;
     };
   }, []);
 
@@ -88,12 +115,22 @@ const ReadingResult: React.FC<ReadingResultProps> = ({ data, userInfo, onReset }
       `;
 
       const utterance = new SpeechSynthesisUtterance(textToRead);
-      utterance.lang = 'vi-VN'; // Vietnamese
+      
+      // Configure Voice
+      utterance.lang = 'vi-VN'; // Default fallback
+      if (preferredVoice) {
+          utterance.voice = preferredVoice;
+          utterance.lang = preferredVoice.lang;
+      }
+
       utterance.rate = 0.9; // Slightly slower for solemnity
       utterance.pitch = 1.0;
       
       utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
+      utterance.onerror = (e) => {
+          console.error("Speech error", e);
+          setIsSpeaking(false);
+      };
 
       speechRef.current = utterance;
       window.speechSynthesis.speak(utterance);

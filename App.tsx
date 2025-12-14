@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import InputForm from './components/InputForm';
 import ReadingResult from './components/ReadingResult';
 import AdminPanel from './components/AdminPanel';
+import SponsorGateway from './components/SponsorGateway'; // Import Gateway
 import { UserInput, ReadingResult as ReadingResultType } from './types';
 import { getGeminiReading } from './services/geminiService';
 import { getAppConfig, trackClick } from './services/configService';
@@ -12,6 +13,10 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
+  
+  // Gateway State
+  const [showGateway, setShowGateway] = useState(false);
+  const [pendingInput, setPendingInput] = useState<UserInput | null>(null);
   
   // Secret Gesture State
   const [logoClicks, setLogoClicks] = useState(0);
@@ -36,9 +41,6 @@ const App: React.FC = () => {
     };
     fetchConfig();
 
-    // Check URL for admin access (hidden link mechanism)
-    // Usage: Add ?panel=admin to your URL to access the admin panel
-    // Example: https://your-site.com/?panel=admin
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.get('panel') === 'admin') {
         setShowAdmin(true);
@@ -57,30 +59,30 @@ const App: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // 1. User submits form -> Check for Redirect
   const handleFormSubmit = async (data: UserInput) => {
-    // 1. CHECK FOR REDIRECT URL
     if (redirectUrl && redirectUrl.trim() !== '') {
-        // Track the click (Fire and forget, or wait slightly)
-        trackClick().catch(e => console.error("Tracking error", e));
-        
-        // Open link in new tab
-        window.open(redirectUrl, '_blank');
-        // Continue flow in current tab...
+        // If redirect URL exists, STOP here and Show Gateway
+        setPendingInput(data);
+        setShowGateway(true);
+    } else {
+        // If no redirect URL, proceed directly
+        executeReading(data);
     }
+  };
 
-    // 2. PROCEED WITH FORTUNE TELLING
+  // 2. The core reading logic (extracted)
+  const executeReading = async (data: UserInput) => {
     setLoading(true);
     setError(null);
-    setUserInput(data); // Save context
+    setUserInput(data);
+    
     try {
       const result = await getGeminiReading(data);
       setReading(result);
     } catch (err: any) {
       console.error("Full Error Details:", err);
-      
-      // Hiển thị lỗi chi tiết để debug
       let displayMessage = "Có lỗi xảy ra khi kết nối với thiên cơ.";
-      
       if (err.message) {
          if (err.message.includes("API KEY") || err.message.includes(".env")) {
              displayMessage = err.message;
@@ -94,20 +96,36 @@ const App: React.FC = () => {
              displayMessage = `Lỗi hệ thống: ${err.message}`;
          }
       }
-      
       setError(displayMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  // 3. Handle Unlock from Gateway
+  const handleGatewayUnlock = () => {
+      // Track click
+      trackClick().catch(e => console.error("Tracking error", e));
+      
+      // Open Link
+      if (redirectUrl) {
+          window.open(redirectUrl, '_blank');
+      }
+
+      // Close Modal & Execute Reading
+      setShowGateway(false);
+      if (pendingInput) {
+          executeReading(pendingInput);
+      }
+  };
+
   const handleReset = () => {
     setReading(null);
     setUserInput(null);
     setError(null);
+    setPendingInput(null);
   };
 
-  // Handle Secret Gesture (5 clicks on Logo)
   const handleLogoClick = () => {
       setLogoClicks(prev => {
           const newCount = prev + 1;
@@ -117,8 +135,6 @@ const App: React.FC = () => {
           }
           return newCount;
       });
-
-      // Reset count if idle for 1 second
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = setTimeout(() => {
           setLogoClicks(0);
@@ -193,6 +209,15 @@ const App: React.FC = () => {
 
       {/* Admin Panel Overlay */}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      
+      {/* Sponsor Gateway Overlay */}
+      {showGateway && (
+          <SponsorGateway 
+              sponsorUrl={redirectUrl} 
+              onUnlock={handleGatewayUnlock} 
+              onCancel={() => setShowGateway(false)} 
+          />
+      )}
     </div>
   );
 };

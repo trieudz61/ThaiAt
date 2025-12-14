@@ -99,7 +99,7 @@ const getAIClient = () => {
     // Kiểm tra kỹ hơn để báo lỗi rõ ràng cho người dùng
     const apiKey = process.env.API_KEY;
     if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-        throw new Error("CHƯA CẤU HÌNH API KEY. Hãy tạo file .env ở thư mục gốc và thêm dòng: API_KEY=...");
+        throw new Error("CHƯA CẤU HÌNH API KEY. Hãy kiểm tra file .env ở thư mục gốc (không phải trong thư mục con) và đảm bảo có dòng: API_KEY=... hoặc GEMINI_API_KEY=...");
     }
     return new GoogleGenAI({ apiKey });
 }

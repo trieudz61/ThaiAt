@@ -8,7 +8,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Cho phép code sử dụng process.env.API_KEY hoạt động trên trình duyệt
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || env.VITE_API_KEY)
+      // Cập nhật: Chấp nhận cả API_KEY, VITE_API_KEY và GEMINI_API_KEY
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || env.VITE_API_KEY || env.GEMINI_API_KEY)
     }
   };
 });

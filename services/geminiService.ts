@@ -2,6 +2,14 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { UserInput, ReadingResult } from "../types";
 import { getYearCanChi, getDayCanChi, parseInputDate, getDayCanIndex } from "../utils/dateUtils";
 
+// Declare process to fix TypeScript build error "Cannot find name 'process'"
+declare const process: {
+  env: {
+    API_KEY?: string;
+    [key: string]: string | undefined;
+  }
+};
+
 // Define the response schema strictly to ensure UI consistency
 const readingSchema: Schema = {
   type: Type.OBJECT,

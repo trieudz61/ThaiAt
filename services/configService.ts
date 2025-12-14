@@ -1,5 +1,13 @@
 import { AppConfig } from "../types";
 
+// ==================================================================================
+// BƯỚC QUAN TRỌNG: ĐỂ APP CHẠY ĐƯỢC TRÊN MỌI MÁY
+// Hãy dán đường dẫn Firebase Realtime Database của bạn vào giữa 2 dấu nháy bên dưới.
+// Nhớ phải có đuôi .json ở cuối (nếu dùng Firebase).
+// Ví dụ: "https://thai-at-than-kinh-default-rtdb.firebaseio.com/config.json"
+const PUBLIC_DATABASE_URL = "https://thai-at-backend-default-rtdb.asia-southeast1.firebasedatabase.app/config.json"; 
+// ==================================================================================
+
 const DB_URL_KEY = 'destiny_db_url';
 const LOCAL_CONFIG_KEY = 'destiny_local_config';
 
@@ -10,14 +18,34 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 /**
- * Lấy URL database đã lưu (nếu có)
+ * Helper để kiểm tra URL hợp lệ
+ */
+const isValidUrl = (urlString: string) => {
+    try { 
+        if (!urlString) return false;
+        return Boolean(new URL(urlString)); 
+    }
+    catch(e){ 
+        return false; 
+    }
+}
+
+/**
+ * Lấy URL database.
+ * Thứ tự ưu tiên:
+ * 1. LocalStorage (Nếu Admin đang test link khác trên máy họ)
+ * 2. PUBLIC_DATABASE_URL (Cấu hình chung cho mọi người dùng)
  */
 export const getDatabaseUrl = (): string => {
-    return localStorage.getItem(DB_URL_KEY) || '';
+    const local = localStorage.getItem(DB_URL_KEY);
+    if (local && isValidUrl(local)) {
+        return local;
+    }
+    return PUBLIC_DATABASE_URL;
 };
 
 /**
- * Lưu URL database
+ * Lưu URL database (Chỉ lưu vào LocalStorage để admin switch qua lại nếu cần)
  */
 export const setDatabaseUrl = (url: string) => {
     if (url) {
@@ -28,24 +56,12 @@ export const setDatabaseUrl = (url: string) => {
 };
 
 /**
- * Helper để kiểm tra URL hợp lệ
- */
-const isValidUrl = (urlString: string) => {
-    try { 
-        return Boolean(new URL(urlString)); 
-    }
-    catch(e){ 
-        return false; 
-    }
-}
-
-/**
  * Lấy cấu hình hiện tại (Ưu tiên Cloud nếu có DB URL, ngược lại dùng LocalStorage)
  */
 export const getAppConfig = async (): Promise<AppConfig> => {
     const dbUrl = getDatabaseUrl();
     
-    // 1. Nếu có DB URL, cố gắng lấy từ Cloud
+    // 1. Nếu có DB URL (từ code hoặc local), cố gắng lấy từ Cloud
     if (dbUrl && isValidUrl(dbUrl)) {
         try {
             const response = await fetch(dbUrl);
